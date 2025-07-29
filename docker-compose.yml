@@ -1,0 +1,142 @@
+version: ‘3.8’
+
+services:
+
+# PostgreSQL with TimescaleDB extension
+
+timescaledb:
+image: timescale/timescaledb:latest-pg15
+container_name: masters_eye_db
+environment:
+POSTGRES_DB: masters_eye
+POSTGRES_USER: admin
+POSTGRES_PASSWORD: masters_eye_2024
+POSTGRES_HOST_AUTH_METHOD: trust
+ports:
+- “5432:5432”
+volumes:
+- timescale_data:/var/lib/postgresql/data
+- ./database/init:/docker-entrypoint-initdb.d/
+networks:
+- masters_eye_network
+restart: unless-stopped
+command: >
+postgres
+-c shared_preload_libraries=timescaledb
+-c max_connections=200
+-c shared_buffers=256MB
+-c effective_cache_size=1GB
+-c work_mem=16MB
+
+# Redis for caching and real-time data
+
+redis:
+image: redis:7-alpine
+container_name: masters_eye_redis
+ports:
+- “6379:6379”
+volumes:
+- redis_data:/data
+- ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+networks:
+- masters_eye_network
+restart: unless-stopped
+command: redis-server /usr/local/etc/redis/redis.conf
+
+# Celery Worker for background tasks
+
+celery_worker:
+build:
+context: ./backend
+dockerfile: Dockerfile
+container_name: masters_eye_worker
+depends_on:
+- timescaledb
+- redis
+environment:
+- DATABASE_URL=postgresql://admin:masters_eye_2024@timescaledb:5432/masters_eye
+- REDIS_URL=redis://redis:6379/0
+- CELERY_BROKER_URL=redis://redis:6379/1
+- CELERY_RESULT_BACKEND=redis://redis:6379/2
+volumes:
+- ./backend:/app
+- ./logs:/app/logs
+networks:
+- masters_eye_network
+restart: unless-stopped
+command: celery -A app.celery_app worker –loglevel=info –concurrency=4
+
+# Celery Beat for scheduled tasks
+
+celery_beat:
+build:
+context: ./backend
+dockerfile: Dockerfile
+container_name: masters_eye_scheduler
+depends_on:
+- timescaledb
+- redis
+environment:
+- DATABASE_URL=postgresql://admin:masters_eye_2024@timescaledb:5432/masters_eye
+- REDIS_URL=redis://redis:6379/0
+- CELERY_BROKER_URL=redis://redis:6379/1
+- CELERY_RESULT_BACKEND=redis://redis:6379/2
+volumes:
+- ./backend:/app
+- ./logs:/app/logs
+networks:
+- masters_eye_network
+restart: unless-stopped
+command: celery -A app.celery_app beat –loglevel=info
+
+# FastAPI Backend
+
+backend:
+build:
+context: ./backend
+dockerfile: Dockerfile
+container_name: masters_eye_api
+depends_on:
+- timescaledb
+- redis
+environment:
+- DATABASE_URL=postgresql://admin:masters_eye_2024@timescaledb:5432/masters_eye
+- REDIS_URL=redis://redis:6379/0
+- CELERY_BROKER_URL=redis://redis:6379/1
+- CELERY_RESULT_BACKEND=redis://redis:6379/2
+- ENVIRONMENT=development
+ports:
+- “8000:8000”
+volumes:
+- ./backend:/app
+- ./logs:/app/logs
+networks:
+- masters_eye_network
+restart: unless-stopped
+command: uvicorn app.main:app –host 0.0.0.0 –port 8000 –reload
+
+# Grafana for monitoring (optional)
+
+grafana:
+image: grafana/grafana:latest
+container_name: masters_eye_grafana
+ports:
+- “3001:3000”
+environment:
+- GF_SECURITY_ADMIN_PASSWORD=masters_eye_2024
+volumes:
+- grafana_data:/var/lib/grafana
+- ./monitoring/grafana:/etc/grafana/provisioning
+networks:
+- masters_eye_network
+restart: unless-stopped
+profiles: [“monitoring”]
+
+volumes:
+timescale_data:
+redis_data:
+grafana_data:
+
+networks:
+masters_eye_network:
+driver: bridge
