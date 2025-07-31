@@ -360,4 +360,67 @@ for _ in range(10):
     
     # 주말이 아니고 공휴일이 아닌 경우
     if weekday < 5:  # 평일
+        holidays = _get_market_holidays(next_day.year)
+        date_str = next_day.strftime("%Y-%m-%d")
+        
+        is_holiday = any(holiday["date"] == date_str for holiday in holidays)
+        
+        if not is_holiday:
+            return next_day
+            
+    next_day += timedelta(days=1)
+
+# 10일 내에 거래일이 없으면 그냥 반환 (비상시)
+return next_day
+```
+
+def _get_market_holidays(year: int) -> List[Dict[str, str]]:
+“”“특정 연도의 시장 휴장일 반환”””
+# 기본 공휴일 (매년 동일)
+fixed_holidays = [
+{“date”: f”{year}-01-01”, “name”: “신정”},
+{“date”: f”{year}-03-01”, “name”: “삼일절”},
+{“date”: f”{year}-05-05”, “name”: “어린이날”},
+{“date”: f”{year}-06-06”, “name”: “현충일”},
+{“date”: f”{year}-08-15”, “name”: “광복절”},
+{“date”: f”{year}-10-03”, “name”: “개천절”},
+{“date”: f”{year}-10-09”, “name”: “한글날”},
+{“date”: f”{year}-12-25”, “name”: “크리스마스”}
+]
+
+```
+# 연도별 음력 공휴일 (대략적인 날짜)
+lunar_holidays = {
+    2024: [
+        {"date": "2024-02-09", "name": "설날 연휴"},
+        {"date": "2024-02-10", "name": "설날"},
+        {"date": "2024-02-11", "name": "설날 연휴"},
+        {"date": "2024-02-12", "name": "설날 대체휴일"},
+        {"date": "2024-05-05", "name": "부처님오신날"},
+        {"date": "2024-09-16", "name": "추석 연휴"},
+        {"date": "2024-09-17", "name": "추석"},
+        {"date": "2024-09-18", "name": "추석 연휴"}
+    ],
+    2025: [
+        {"date": "2025-01-28", "name": "설날 연휴"},
+        {"date": "2025-01-29", "name": "설날"},
+        {"date": "2025-01-30", "name": "설날 연휴"},
+        {"date": "2025-05-05", "name": "부처님오신날"},
+        {"date": "2025-10-05", "name": "추석 연휴"},
+        {"date": "2025-10-06", "name": "추석"},
+        {"date": "2025-10-07", "name": "추석 연휴"},
+        {"date": "2025-10-08", "name": "추석 대체휴일"}
+    ]
+}
+
+holidays = fixed_holidays.copy()
+
+# 해당 연도의 음력 공휴일 추가
+if year in lunar_holidays:
+    holidays.extend(lunar_holidays[year])
+
+# 날짜순 정렬
+holidays.sort(key=lambda x: x["date"])
+
+return holidays
 ```
